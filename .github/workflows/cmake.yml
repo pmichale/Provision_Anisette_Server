@@ -1,97 +1,73 @@
-name: x86_64 builds
+name: x86 builds
 
-on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+on: push
 
 env:
   BUILD_TYPE: Release
 
 jobs:
-  build-all:
-    runs-on: ubuntu-20.04
-
-    steps:
-    - uses: actions/checkout@v3
-      with:
-        submodules: recursive
-
-    - name: D Compiler Installation
-      uses: dlang-community/setup-dlang@v1.1.1
-      with:
-        compiler: ldc-latest
-
-    - name: Install dependencies
-      run: sudo apt-get update && sudo apt-get install -y build-essential gcc g++ ninja-build libgtk-3-dev libimobiledevice-dev
-
-    - name: Configure CMake
-      run: cmake -G Ninja -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} -DCMAKE_D_COMPILER=ldc2 -Dbuild_javabindings=ON -Dlink_libplist_dynamic=ON
-
-    - name: Build
-      run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
-
-    - uses: actions/upload-artifact@v3
-      with:
-        name: provision-full-kit
-        path: |
-          ${{github.workspace}}/build/anisette_server
-          ${{github.workspace}}/build/libprovision.a
-          ${{github.workspace}}/build/libprovision-java.so
-          ${{github.workspace}}/build/retrieve_headers
-          ${{github.workspace}}/build/sideload_ipa
-  build-anisette-server:
-    runs-on: ubuntu-20.04
+  build-anisette-server-x86_64:
+    runs-on: ubuntu-22.04
 
     steps:
       - uses: actions/checkout@v3
         with:
           submodules: recursive
-
-      - name: D Compiler Installation
-        uses: dlang-community/setup-dlang@v1.1.1
-        with:
-          compiler: ldc-latest
-
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y build-essential gcc g++ ninja-build
-
-      - name: Configure CMake
-        run: cmake -G Ninja -Dbuild_sideloadipa=OFF -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} -DCMAKE_D_COMPILER=ldc2 -Dlink_libplist_dynamic=ON
-
-      - name: Build
-        run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
-      
-      - uses: actions/upload-artifact@v3
-        with:
-          name: anisette-server
-          path: ${{github.workspace}}/build/anisette_server
-
-  build-debug-rh:
-    runs-on: ubuntu-20.04
-
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          submodules: recursive
-
-      - name: D Compiler Installation
-        uses: dlang-community/setup-dlang@v1.1.1
-        with:
-          compiler: ldc-latest
-
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y build-essential gcc g++ ninja-build
-
-      - name: Configure CMake
-        run: cmake -G Ninja -Dbuild_sideloadipa=OFF -Dbuild_anisetteserver=OFF -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_D_COMPILER=ldc2 -Dlink_libplist_dynamic=ON
-
-      - name: Build
-        run: cmake --build ${{github.workspace}}/build --config Debug
-
-      - uses: actions/upload-artifact@v3
-        with:
-          name: retrieve-headers-debug
-          path: ${{github.workspace}}/build/retrieve_headers
           
+      - uses: dlang-community/setup-dlang@v1
+        with:
+          compiler: ldc-1.34.0
+        
+      - name: Install dependencies
+        run: |
+          sudo add-apt-repository ppa:ubuntu-toolchain-r/ppa
+          sudo apt-get update && sudo apt-get install -y libz-dev elfutils
+
+      - name: Build
+        run: dub build :anisette-server -b release -c "static"
+
+      - name: Rename
+        run: mv "${{github.workspace}}/bin/provision_anisette-server" "${{github.workspace}}/bin/anisette-server-x86_64"
+
+      - name: Put debug symbols in a separate file
+        run: eu-strip --strip-debug -f "${{github.workspace}}/bin/anisette-server-x86_64.dbg" "${{github.workspace}}/bin/anisette-server-x86_64"
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: anisette-server-x86_64
+          path: |
+            ${{github.workspace}}/bin/anisette-server-x86_64
+            ${{github.workspace}}/bin/anisette-server-x86_64.dbg
+
+  build-anisette-server-i686:
+    runs-on: ubuntu-latest
+    container: ubuntu:23.04
+
+    steps:
+      - name: Install dependencies
+        run: |
+          apt-get update
+          apt-get install -y software-properties-common
+          add-apt-repository ppa:ubuntu-toolchain-r/ppa
+          apt-get install -y git gdc-13-i686-linux-gnu dub libz-dev elfutils
+
+      - uses: actions/checkout@v3
+        with:
+          submodules: recursive
+
+      - name: Build
+        run: dub build :anisette-server -b release --compiler=i686-linux-gnu-gdc-13 -c "static"
+
+      - name: Rename
+        run: mv "bin/provision_anisette-server" "bin/anisette-server-i686"
+
+      - name: Put debug symbols in a separate file
+        run: eu-strip --strip-debug -f "bin/anisette-server-i686.dbg" "bin/anisette-server-i686"
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: anisette-server-i686
+          path: |
+            bin/anisette-server-i686
+            bin/anisette-server-i686.dbg
+
